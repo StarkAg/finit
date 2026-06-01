@@ -1,0 +1,107 @@
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk/SpaceGrotesk-400.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk/SpaceGrotesk-500.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk/SpaceGrotesk-600.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/fonts/space-grotesk/SpaceGrotesk-700.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "AmericanCaptain";
+  src: url("/american-captain-font/AmericanCaptain-MdEY.otf") format("opentype");
+  font-display: swap;
+  font-weight: 700;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  @apply bg-ink text-slate-200 font-sans antialiased;
+  min-width: 0;
+  width: 100%;
+}
+
+* {
+  min-width: 0;
+}
+
+.phone-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.25rem;
+  width: 100%;
+  max-width: none;
+}
+
+.phone-tab {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0.375rem 0.125rem;
+}
+
+.brand-wordmark {
+  font-family: "AmericanCaptain", "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: 0.04em;
+}
+
+@layer components {
+  .card {
+    @apply bg-panel border border-line rounded;
+  }
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50;
+  }
+  .btn-brand {
+    @apply btn bg-brand text-black hover:bg-brand/90;
+  }
+  .btn-ghost {
+    @apply btn border border-line text-slate-300 hover:bg-panel2;
+  }
+  .input {
+    @apply min-h-11 w-full rounded bg-panel2 border border-line px-3 py-2 text-base text-slate-100 outline-none focus:border-brand placeholder:text-muted/60 sm:text-sm;
+  }
+  .label {
+    @apply text-xs font-medium text-muted mb-1 block;
+  }
+  .th {
+    @apply px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted whitespace-nowrap;
+  }
+  .td {
+    @apply px-3 py-2 text-sm whitespace-nowrap border-t border-line/60;
+  }
+  .chip {
+    @apply inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold;
+  }
+}
