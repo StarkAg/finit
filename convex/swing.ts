@@ -33,6 +33,11 @@ export const update = mutation({
   handler: async (ctx, { id, ...rest }) => ctx.db.patch(id, rest),
 });
 
+export const updateCurrentPrice = mutation({
+  args: { id: v.id("swing"), currentPrice: v.number() },
+  handler: async (ctx, { id, currentPrice }) => ctx.db.patch(id, { currentPrice }),
+});
+
 export const remove = mutation({
   args: { id: v.id("swing") },
   handler: async (ctx, { id }) => ctx.db.delete(id),
