@@ -286,6 +286,12 @@ function ItemCard({
   const target = openTrades.find((t) => t._id === it.targetId) ?? null;
   const valid = itemValid(it);
 
+  // Sanity check: a limit order fills at ~the limit price. A large gap means the
+  // avg price was likely misread (a dropped/added digit from the ₹ glyph).
+  const op = it.parsed.orderPrice;
+  const entered = Number(it.price);
+  const priceSuspect = op != null && it.price !== "" && entered > 0 && Math.abs(entered - op) / op > 0.2;
+
   let summary: { k: string; v: string; cls?: string } | null = null;
   if (isBuy && it.qty && it.price) {
     summary = { k: "Invested", v: money((Number(it.qty) || 0) * (Number(it.price) || 0)) };
@@ -358,6 +364,11 @@ function ItemCard({
         )}
       </div>
 
+      {priceSuspect && (
+        <div className="mt-2 text-xs text-warn">
+          Price may be misread — this order was a limit at ₹{op}. Double-check the {isSell ? "sell" : "buy"} price.
+        </div>
+      )}
       {it.include && !valid && (
         <div className="mt-2 text-xs text-warn">
           {it.side === "SELL" && !it.targetId ? "Select the open position to close." : "Fill in all fields to import this order."}

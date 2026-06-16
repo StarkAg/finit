@@ -7,6 +7,7 @@ export type ParsedOrder = {
   stockName: string | null;
   qty: number | null;
   avgPrice: number | null;
+  orderPrice: number | null; // "Limit at ₹X" value; null for Market orders
   date: string | null; // ISO yyyy-mm-dd
   exchange: string | null;
   status: "success" | "failed" | null; // executed vs cancelled/rejected
@@ -62,6 +63,11 @@ export function parseGrowwOrder(raw: string): ParsedOrder {
 
   // Avg price — prefer "Avg price ₹X" (the ₹ often OCRs as junk or vanishes);
   // fall back to the next line, then to "Limit at ₹X".
+  // Order price — the "Limit at ₹X" value (null for Market orders). Used both as
+  // an avg-price fallback and as a sanity cross-check in the review UI.
+  const limM = text.match(/limit\s*at[^\d₹]*₹?\s*([\d,]+\.?\d*)/i);
+  const orderPrice = limM ? num(limM[1]) : null;
+
   let avgPrice: number | null = null;
   const avgM = text.match(/avg\s*price[^\d₹]*₹?\s*([\d,]+\.?\d*)/i);
   if (avgM) avgPrice = num(avgM[1]);
@@ -69,10 +75,7 @@ export function parseGrowwOrder(raw: string): ParsedOrder {
     const avgLine = valueAfterLabel(/avg\s*price/i);
     if (avgLine) avgPrice = num(avgLine);
   }
-  if (avgPrice == null) {
-    const limM = text.match(/limit\s*at[^\d₹]*₹?\s*([\d,]+\.?\d*)/i);
-    if (limM) avgPrice = num(limM[1]);
-  }
+  if (avgPrice == null) avgPrice = orderPrice;
 
   // Qty — "1 Qty" when clean; else the number two lines above Order Type
   // ("2 Qty" → "210y", "16 Qty" → "16 ov" — the label gets garbled, the digits don't).
@@ -120,7 +123,7 @@ export function parseGrowwOrder(raw: string): ParsedOrder {
   if (/unsuccessful|cancel|reject|fail/i.test(text)) status = "failed";
   else if (/successful/i.test(text)) status = "success";
 
-  return { side, stockName, qty, avgPrice, date, exchange, status, raw };
+  return { side, stockName, qty, avgPrice, orderPrice, date, exchange, status, raw };
 }
 
 // Normalize a name for fuzzy matching against journal entries.
