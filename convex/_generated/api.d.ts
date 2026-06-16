@@ -11,6 +11,7 @@
 import type * as budget from "../budget.js";
 import type * as ledger from "../ledger.js";
 import type * as names from "../names.js";
+import type * as ocr from "../ocr.js";
 import type * as quotes from "../quotes.js";
 import type * as seed from "../seed.js";
 import type * as swing from "../swing.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   budget: typeof budget;
   ledger: typeof ledger;
   names: typeof names;
+  ocr: typeof ocr;
   quotes: typeof quotes;
   seed: typeof seed;
   swing: typeof swing;

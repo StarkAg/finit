@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { ocrImage } from "../lib/ocr";
@@ -10,6 +10,20 @@ import { Field, Modal } from "./ui";
 import { Icon } from "./icons";
 
 type Kind = "swing" | "yearly";
+
+// Read a File as base64 (no data: prefix) + its media type, for the vision action.
+const fileToBase64 = (file: File) =>
+  new Promise<{ data: string; mediaType: string }>((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("Could not read file"));
+    r.onload = () => {
+      const s = r.result as string;
+      const comma = s.indexOf(",");
+      const mediaType = s.slice(5, s.indexOf(";")) || file.type || "image/jpeg";
+      resolve({ data: s.slice(comma + 1), mediaType });
+    };
+    r.readAsDataURL(file);
+  });
 
 // One parsed screenshot, with user-editable fields, awaiting confirmation.
 type ReviewItem = {
@@ -67,6 +81,7 @@ export default function UploadOrder({ kind, open, onClose }: { kind: Kind; open:
   const all = useMemo(() => (allData ?? []) as TradeRow[], [allData]);
   const add = useMutation(apiMod.add);
   const update = useMutation(apiMod.update);
+  const extractOrder = useAction(api.ocr.extractOrder);
 
   const openTrades = useMemo(() => all.filter((t) => !t.sellDate), [all]);
 
@@ -110,8 +125,17 @@ export default function UploadOrder({ kind, open, onClose }: { kind: Kind; open:
         setTotal(files.length);
         setProgress(0);
         try {
-          const text = await ocrImage(files[i], setProgress);
-          next.push(toItem(files[i].name, parseGrowwOrder(text)));
+          let parsed: ParsedOrder;
+          try {
+            // Primary: Claude Sonnet vision (accurate, reads ₹/labels/qty).
+            const { data, mediaType } = await fileToBase64(files[i]);
+            const r = await extractOrder({ image: data, mediaType });
+            parsed = { ...r, raw: "" };
+          } catch {
+            // Fallback: on-device model if the API call fails (e.g. key not set).
+            parsed = parseGrowwOrder(await ocrImage(files[i], setProgress));
+          }
+          next.push(toItem(files[i].name, parsed));
         } catch {
           failed.push(files[i].name);
         }
@@ -201,7 +225,7 @@ export default function UploadOrder({ kind, open, onClose }: { kind: Kind; open:
               <Icon name="import" className="h-6 w-6" />
             </div>
             <div className="text-sm font-medium text-slate-200">Drop Groww order screenshots, or click to choose</div>
-            <div className="text-xs text-muted">Select multiple images at once — each is read on-device, nothing is uploaded.</div>
+            <div className="text-xs text-muted">Select multiple images at once — each is read by AI for accurate extraction.</div>
           </div>
           {busy && (
             <div className="mt-4">
