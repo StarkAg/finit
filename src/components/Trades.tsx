@@ -33,6 +33,25 @@ const quoteSymbol = (name?: string) => {
   return exchange === "XBOM" || exchange === "BSE" ? `${symbol}.BO` : `${symbol}.NS`;
 };
 
+type Entry = { r: TradeRow; c: ReturnType<typeof tradeCalc> };
+type SortKey = "name" | "buy" | "sell" | "days" | "qty" | "buyPrice" | "sellCur" | "invested" | "return" | "netPct" | "feedback";
+type SortState = { key: SortKey; dir: "asc" | "desc" } | null;
+const sortValue = (e: Entry, key: SortKey): string | number | undefined => {
+  switch (key) {
+    case "name": return e.r.name?.toLowerCase() ?? "";
+    case "buy": return e.r.buyDate;
+    case "sell": return e.r.sellDate;
+    case "days": return e.c.days;
+    case "qty": return e.r.qty;
+    case "buyPrice": return e.r.buyPrice;
+    case "sellCur": return e.c.closed ? e.r.sellPrice : e.r.currentPrice;
+    case "invested": return e.c.invested;
+    case "return": return e.c.grossReturn;
+    case "netPct": return e.c.netProfitPct;
+    case "feedback": return e.r.feedback?.toLowerCase() ?? "";
+  }
+};
+
 export default function Trades({ kind }: { kind: Kind }) {
   const apiMod = kind === "swing" ? api.swing : api.yearly;
   const rowsData = useQuery(apiMod.list);
@@ -67,6 +86,25 @@ export default function Trades({ kind }: { kind: Kind }) {
     }
     return { openInvested, openValue, closedInvested, closedNetProfit, wins, closed, winRate: closed ? wins / closed : 0, n: calc.length };
   }, [calc]);
+
+  const [sort, setSort] = useState<SortState>(null);
+  const sorted = useMemo(() => {
+    if (!sort) return calc;
+    const sign = sort.dir === "asc" ? 1 : -1;
+    return [...calc].sort((a, b) => {
+      const av = sortValue(a, sort.key);
+      const bv = sortValue(b, sort.key);
+      const aM = av == null || av === "";
+      const bM = bv == null || bv === "";
+      if (aM && bM) return 0;
+      if (aM) return 1; // missing values always sort last
+      if (bM) return -1;
+      const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return cmp * sign;
+    });
+  }, [calc, sort]);
+  const toggleSort = (key: SortKey) =>
+    setSort((p) => (p && p.key === key ? { key, dir: p.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
   const openAdd = () => {
     setEditId(null);
@@ -181,7 +219,7 @@ export default function Trades({ kind }: { kind: Kind }) {
 
       <div className="card overflow-hidden xl:overflow-visible">
         <div className="divide-y divide-line xl:hidden">
-          {calc.map(({ r, c }) => (
+          {sorted.map(({ r, c }) => (
             <div key={r._id} className="w-full cursor-pointer p-3 text-left hover:bg-panel2/40" onClick={() => openEdit(r)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -250,22 +288,22 @@ export default function Trades({ kind }: { kind: Kind }) {
             )}
             <thead className="bg-panel2/60">
               <tr>
-                <th className="th px-1">Stock</th>
-                <th className="th px-1">Buy</th>
-                <th className="th px-1">Sell</th>
-                {kind === "swing" && <th className="th px-1 text-right">Days</th>}
-                <th className="th px-1 text-right">Qty</th>
-                <th className="th px-1 text-right">Buy ₹</th>
-                <th className="th px-1 text-right">Sell/Cur</th>
-                <th className="th px-1 text-right">Invested</th>
-                <th className="th px-1 text-right">Return</th>
-                <th className="th px-1 text-right">Net %</th>
-                {kind === "swing" && <th className="th pl-5 pr-1">Feedback</th>}
+                <SortHeader label="Stock" sortKey="name" sort={sort} onSort={toggleSort} className="px-1" />
+                <SortHeader label="Buy" sortKey="buy" sort={sort} onSort={toggleSort} className="px-1" />
+                <SortHeader label="Sell" sortKey="sell" sort={sort} onSort={toggleSort} className="px-1" />
+                {kind === "swing" && <SortHeader label="Days" sortKey="days" sort={sort} onSort={toggleSort} align="right" className="px-1" />}
+                <SortHeader label="Qty" sortKey="qty" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                <SortHeader label="Buy ₹" sortKey="buyPrice" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                <SortHeader label="Sell/Cur" sortKey="sellCur" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                <SortHeader label="Invested" sortKey="invested" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                <SortHeader label="Return" sortKey="return" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                <SortHeader label="Net %" sortKey="netPct" sort={sort} onSort={toggleSort} align="right" className="px-1" />
+                {kind === "swing" && <SortHeader label="Feedback" sortKey="feedback" sort={sort} onSort={toggleSort} className="pl-5 pr-1" />}
                 <th className="th"></th>
               </tr>
             </thead>
             <tbody>
-              {calc.map(({ r, c }) => (
+              {sorted.map(({ r, c }) => (
                 <tr key={r._id} className="hover:bg-panel2/40 cursor-pointer" onClick={() => openEdit(r)}>
                   <td className="td px-1 font-medium" title={r.name || "unnamed"}>
                     <span className={c.closed ? undefined : "text-warn"}>{r.name || <span className="text-muted italic">unnamed</span>}</span>
@@ -348,6 +386,33 @@ function Prev({ k, v, cls }: { k: string; v: string; cls?: string }) {
       <div className="text-[11px] text-muted">{k}</div>
       <div className={`font-semibold ${cls ?? "text-slate-100"}`}>{v}</div>
     </div>
+  );
+}
+
+function SortHeader({
+  label, sortKey, sort, onSort, align = "left", className = "",
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: SortState;
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  const active = sort?.key === sortKey;
+  const arrow = active ? (sort!.dir === "asc" ? "▲" : "▼") : "↕";
+  return (
+    <th className={`th ${align === "right" ? "text-right" : ""} ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex w-full items-center gap-1 uppercase tracking-wide transition-colors hover:text-slate-200 ${align === "right" ? "justify-end" : "justify-start"}`}
+        title={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <span className={`text-[9px] leading-none ${active ? "text-brand" : "text-muted/40"}`}>{arrow}</span>
+      </button>
+    </th>
   );
 }
 

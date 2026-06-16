@@ -1,6 +1,6 @@
-# FINIT
+# Vance
 
-FINIT is a personal finance and trading journal web app for tracking budgets, stock positions, Groww order screenshots, and ledger balances in one place.
+Vance is a personal finance and trading journal web app for tracking budgets, stock positions, Groww order screenshots, and ledger balances in one place.
 
 Production: https://finance-record-iota.vercel.app  
 Vercel project: `finance-record`

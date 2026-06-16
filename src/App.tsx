@@ -57,7 +57,7 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-line bg-ink/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-3 px-3 py-3 sm:px-4 2xl:max-w-[2200px]">
           <div className="flex min-w-0 items-center gap-2 lg:pr-4">
-            <span className="brand-wordmark text-2xl leading-none text-slate-100">FINIT</span>
+            <span className="brand-wordmark text-2xl leading-none text-slate-100">Vance</span>
             <Icon name="trending" className="h-4 w-4 shrink-0 text-brand" />
           </div>
           <nav className="hidden min-w-0 flex-1 gap-1 lg:flex">{desktopNav}</nav>
@@ -77,7 +77,7 @@ export default function App() {
       </nav>
 
       <footer className="mx-auto hidden max-w-[1800px] px-3 py-6 text-center text-xs text-muted sm:block sm:px-4 2xl:max-w-[2200px]">
-        FINIT · data synced live via Convex
+        Vance · data synced live via Convex
       </footer>
     </div>
   );
