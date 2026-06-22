@@ -126,7 +126,16 @@ function OrdersTable({ orders }: { orders: FnoOrder[] }) {
         <div key={date} className="card min-w-0 p-3 sm:p-4">
           <div className="mb-2 text-xs font-semibold text-muted">{fmtDate(date)}</div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
+            <table className="w-full min-w-[480px] table-fixed text-sm">
+              {/* Shared fixed widths so every date group lines up column-for-column */}
+              <colgroup>
+                <col className="w-[36%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[13%]" />
+                <col className="w-[15%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <thead>
                 <tr className="text-left text-xs text-muted">
                   <th className="py-1 pr-2 font-medium">Contract</th>
@@ -140,7 +149,7 @@ function OrdersTable({ orders }: { orders: FnoOrder[] }) {
               <tbody>
                 {rows.map((o) => (
                   <tr key={o._id} className="border-t border-line/60">
-                    <td className="py-1.5 pr-2 font-medium text-slate-200">
+                    <td className="truncate py-1.5 pr-2 font-medium text-slate-200">
                       {symbolToName(o.symbol)}
                       {o.growwOrderId.startsWith("HIST_") && (
                         <span className="ml-1.5 text-[9px] text-muted">seed</span>
