@@ -1,26 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import {
-  Bar, BarChart, Cell, LabelList, Legend, Line, LineChart, Pie, PieChart, XAxis, YAxis,
+  Bar, BarChart, Cell, LabelList, Line, LineChart, XAxis, YAxis,
 } from "recharts";
 import { api } from "../../convex/_generated/api";
-import { budgetCalc, tradeCalc, withRunningBalance, LEDGER_ACCOUNTS, type BudgetRow, type TradeRow, type LedgerRow } from "../lib/calc";
+import { budgetCalc, tradeCalc, type BudgetRow, type TradeRow } from "../lib/calc";
 import { money, pct } from "../lib/format";
 import { useGrowwHoldings } from "../lib/useGrowwHoldings";
 import { Stat, Count } from "./ui";
-
-const COLORS = ["#d8b45a", "#f5f5f5", "#737373", "#2dd4bf", "#fb7185", "#f59e0b"];
 
 export default function Dashboard({ go }: { go: (t: string) => void }) {
   const budgetData = useQuery(api.budget.list);
   const swingData = useQuery(api.swing.list);
   const yearlyData = useQuery(api.yearly.list);
-  const ledgerData = useQuery(api.ledger.list);
 
   const budget = useMemo(() => (budgetData ?? []) as BudgetRow[], [budgetData]);
   const swing = useMemo(() => (swingData ?? []) as TradeRow[], [swingData]);
   const yearly = useMemo(() => (yearlyData ?? []) as TradeRow[], [yearlyData]);
-  const ledger = useMemo(() => (ledgerData ?? []) as LedgerRow[], [ledgerData]);
 
   const swingC = useMemo(() => swing.map((r) => tradeCalc(r)), [swing]);
   const yearlyC = useMemo(() => yearly.map((r) => tradeCalc(r)), [yearly]);
@@ -48,19 +44,9 @@ export default function Dashboard({ go }: { go: (t: string) => void }) {
   const netView = real ? h.totals.pnl : totalNet;
   const netPctView = real ? h.totals.pnlPct : totalInvested ? totalNet / totalInvested : 0;
 
-  // Budget allocation from the latest month
+  // Budget allocation from the latest month (drives the Monthly income stat)
   const latest = budget[budget.length - 1];
   const alloc = latest ? budgetCalc(latest) : null;
-  const allocData = alloc
-    ? [
-        { name: "Expenses", value: Math.max(0, alloc.expenses) },
-        { name: "Want", value: Math.max(0, alloc.want) },
-        { name: "Investment", value: Math.max(0, alloc.investment) },
-        { name: "Saving", value: Math.max(0, alloc.saving) },
-        { name: "Fixed", value: Math.max(0, alloc.fixed) },
-        { name: "Extra", value: Math.max(0, latest.extra) },
-      ].filter((d) => d.value > 0)
-    : [];
 
   // Month-wise realized net P/L (closed swing + yearly trades, grouped by sell month)
   const monthly = useMemo(() => {
@@ -101,13 +87,6 @@ export default function Dashboard({ go }: { go: (t: string) => void }) {
     }));
   }, [swing]);
 
-  const ledgerBalances = LEDGER_ACCOUNTS.map((a) => {
-    const rows = withRunningBalance(ledger.filter((r) => r.account === a));
-    const last = rows.length ? rows[rows.length - 1] : null;
-    return { name: a, balance: last ? Math.abs(last.balance) : 0 };
-  });
-  const hasLedgerBalances = ledgerBalances.some((r) => r.balance > 0);
-
   return (
     <div className="space-y-5">
       <div>
@@ -121,41 +100,21 @@ export default function Dashboard({ go }: { go: (t: string) => void }) {
         <Stat label="Monthly income" value={<Count value={alloc?.income ?? 0} format={money} />} sub={latest ? latest.date : "—"} />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="card min-w-0 p-3 sm:p-4 lg:col-span-2">
-          <div className="mb-2 text-sm font-semibold text-slate-100">Swing equity curve (cumulative net P/L)</div>
-          {equity.length ? (
-            <ChartBox>
-              {({ width, height }) => (
-                <LineChart width={width} height={height} data={equity} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
-                  <XAxis dataKey="date" stroke="#9a9a9a" fontSize={11} minTickGap={24} />
-                  <YAxis stroke="#9a9a9a" fontSize={11} width={42} />
-                  <Line type="monotone" dataKey="pnl" stroke="#d8b45a" strokeWidth={2} dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" />
-                </LineChart>
-              )}
-            </ChartBox>
-          ) : (
-            <div className="h-52 min-w-0 sm:h-64"><Empty /></div>
-          )}
-        </div>
-
-        <div className="card min-w-0 p-3 sm:p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-100">Latest budget allocation</div>
-          {allocData.length ? (
-            <ChartBox>
-              {({ width, height }) => (
-                <PieChart width={width} height={height}>
-                  <Pie data={allocData} dataKey="value" nameKey="name" innerRadius={40} outerRadius={68} paddingAngle={2} isAnimationActive animationDuration={900} animationEasing="ease-out">
-                    {allocData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Legend wrapperStyle={{ fontSize: 10, color: "#9a9a9a" }} />
-                </PieChart>
-              )}
-            </ChartBox>
-          ) : (
-            <div className="h-52 min-w-0 sm:h-64"><Empty /></div>
-          )}
-        </div>
+      <div className="card min-w-0 p-3 sm:p-4">
+        <div className="mb-2 text-sm font-semibold text-slate-100">Swing equity curve (cumulative net P/L)</div>
+        {equity.length ? (
+          <ChartBox>
+            {({ width, height }) => (
+              <LineChart width={width} height={height} data={equity} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
+                <XAxis dataKey="date" stroke="#9a9a9a" fontSize={11} minTickGap={24} />
+                <YAxis stroke="#9a9a9a" fontSize={11} width={42} />
+                <Line type="monotone" dataKey="pnl" stroke="#d8b45a" strokeWidth={2} dot={false} isAnimationActive animationDuration={1100} animationEasing="ease-out" />
+              </LineChart>
+            )}
+          </ChartBox>
+        ) : (
+          <div className="h-52 min-w-0 sm:h-64"><Empty /></div>
+        )}
       </div>
 
       <div className="card min-w-0 p-3 sm:p-4">
@@ -186,34 +145,12 @@ export default function Dashboard({ go }: { go: (t: string) => void }) {
         )}
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="card min-w-0 p-3 sm:p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-100">Ledger balances</div>
-          {hasLedgerBalances ? (
-            <ChartBox className="h-52 min-w-0 sm:h-56">
-              {({ width, height }) => (
-                <BarChart width={width} height={height} data={ledgerBalances} margin={{ left: 0, right: 4, top: 16, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#9a9a9a" fontSize={9} interval={0} angle={-20} textAnchor="end" height={54} />
-                  <YAxis stroke="#9a9a9a" fontSize={11} width={42} />
-                  <Bar dataKey="balance" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1000} animationEasing="ease-out">
-                    {ledgerBalances.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    <LabelList dataKey="balance" position="top" offset={6} fill="#f5f5f5" fontSize={10} fontWeight={700} formatter={(v) => (Number(v) ? money(Number(v)) : "")} />
-                  </Bar>
-                </BarChart>
-              )}
-            </ChartBox>
-          ) : (
-            <div className="h-52 min-w-0 sm:h-56"><Empty /></div>
-          )}
-        </div>
-
-        <div className="card min-w-0 p-3 sm:p-4">
-          <div className="mb-3 text-sm font-semibold text-slate-100">Trading breakdown</div>
-          <div className="space-y-3">
-            <Row label="Swing — net P/L" value={<Count value={s.net} format={money} />} tone={s.net} onClick={() => go("swing")} sub={`${money(s.invested)} invested`} />
-            <Row label="Yearly — net P/L" value={<Count value={y.net} format={money} />} tone={y.net} onClick={() => go("yearly")} sub={`${money(y.invested)} invested`} />
-            <Row label="Current portfolio value" value={<Count value={portfolioValue} format={money} />} tone={0} sub={real ? "live Groww holdings" : "mark-to-market"} />
-          </div>
+      <div className="card min-w-0 p-3 sm:p-4">
+        <div className="mb-3 text-sm font-semibold text-slate-100">Trading breakdown</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Row label="Swing — net P/L" value={<Count value={s.net} format={money} />} tone={s.net} onClick={() => go("swing")} sub={`${money(s.invested)} invested`} />
+          <Row label="Yearly — net P/L" value={<Count value={y.net} format={money} />} tone={y.net} onClick={() => go("yearly")} sub={`${money(y.invested)} invested`} />
+          <Row label="Current portfolio value" value={<Count value={portfolioValue} format={money} />} tone={0} sub={real ? "live Groww holdings" : "mark-to-market"} />
         </div>
       </div>
     </div>
