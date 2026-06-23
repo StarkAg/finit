@@ -1,7 +1,7 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
 
 // Agentic position review — the "brain" of Vance. Reads the latest live F&O
 // snapshot (built by groww.ts → pollPosition) and asks Claude Opus 4.8 to reason
@@ -16,6 +16,7 @@ import { internal } from "./_generated/api";
 
 const MODEL = "claude-opus-4-8";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const r2 = (n: number) => Math.round(n * 100) / 100;
 
 type Position = {
   symbol: string;
@@ -186,5 +187,180 @@ export const reviewPositions = action({
     });
 
     return { reviewed: positions.length };
+  },
+});
+
+// ---------------- Daily "best option to trade today" ideas ----------------
+
+type SectorRow = { s: string; w1: number | null; m1: number | null; m3: number | null; breadth: number; trend: string; score: number };
+type SectorStock = { name: string; chg: number | null; mcap: number | null; trend: string };
+type SectorPayload = {
+  ranked: SectorRow[];
+  picks: { sector: SectorRow; stocks: SectorStock[] }[];
+  fetchedAtIST: string;
+};
+
+type IdeaCandidate = {
+  underlying: string;
+  nseSymbol: string;
+  optionType: "CE" | "PE";
+  conviction: "low" | "medium" | "high";
+  sector: string;
+  targetPct: number;
+  stopPct: number;
+  rationale: string;
+};
+
+const IDEAS_SYSTEM = `You are an F&O options strategist for an Indian retail trader (NSE). Your job: from a sector-rotation market scan, pick the single best options trades to BUY today and rank them best-first.
+
+Rules:
+- ONLY pick underlyings that have liquid NSE F&O (options) — large/mid caps and index constituents. Do NOT pick illiquid small-caps or names without options.
+- Give the exact NSE/F&O ticker in nseSymbol (UPPERCASE, e.g. "HAL", "POLICYBZR", "RELAXO", "BHARTIARTL"). This must match the NSE symbol, not the display name.
+- Bullish thesis → optionType "CE"; bearish → "PE".
+- Favour strong-momentum, high-breadth sectors for CE; weak/breaking sectors for PE. "Dip in strength" names (red today inside a strong sector) are good CE candidates.
+- targetPct and stopPct are percentage moves on the OPTION PREMIUM (not the stock). Use realistic options ranges: target 30–80%, stop 20–35%.
+- rationale: one or two crisp lines a trader can act on, citing the sector momentum/breadth and the setup.
+- Return 5–6 candidates ranked best-first so weaker picks can be dropped if they lack options. Also give a one/two-sentence marketContext on the overall tape.
+
+Return ONLY the structured object.`;
+
+const IDEAS_SCHEMA = {
+  type: "object",
+  properties: {
+    marketContext: { type: "string" },
+    candidates: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          underlying: { type: "string" },
+          nseSymbol: { type: "string" },
+          optionType: { type: "string", enum: ["CE", "PE"] },
+          conviction: { type: "string", enum: ["low", "medium", "high"] },
+          sector: { type: "string" },
+          targetPct: { type: "number" },
+          stopPct: { type: "number" },
+          rationale: { type: "string" },
+        },
+        required: ["underlying", "nseSymbol", "optionType", "conviction", "sector", "targetPct", "stopPct", "rationale"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["marketContext", "candidates"],
+  additionalProperties: false,
+};
+
+// IST trading-day string (yyyy-mm-dd).
+function istDay(): string {
+  return new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+}
+
+// Scan the latest sector snapshot, ask Claude for the best option plays, resolve
+// the top picks to concrete ATM contracts, and store the day's ideas. PROPOSE-ONLY.
+export const generateIdeas = action({
+  args: {},
+  handler: async (ctx): Promise<{ generated: number; skipped?: string }> => {
+    const date = istDay();
+    const snap = await ctx.runQuery(api.sector.get, {});
+    let sect: SectorPayload | null = null;
+    try {
+      sect = snap?.payload ? (JSON.parse(snap.payload) as SectorPayload) : null;
+    } catch {
+      sect = null;
+    }
+    if (!sect || !sect.ranked?.length) {
+      await ctx.runMutation(internal.growwStore.putAgentIdeas, {
+        date,
+        generatedAt: Date.now(),
+        model: MODEL,
+        payload: JSON.stringify({ ideas: [], marketContext: "No sector-rotation scan available yet — run the sector feed first.", sectorDataAt: snap?.updatedAt ?? null }),
+      });
+      return { generated: 0, skipped: "no sector data" };
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set on the Convex deployment");
+
+    // Compact scan for the model: top ranked sectors + the dip-in-strength picks.
+    const scan = {
+      rankedSectors: sect.ranked.slice(0, 18).map((s) => ({ sector: s.s, mom3M: s.m3, mom1M: s.m1, mom1W: s.w1, breadthPct: Math.round(s.breadth * 100), trend: s.trend, score: s.score })),
+      dipCandidates: (sect.picks ?? []).map((p) => ({
+        sector: p.sector.s,
+        breadthPct: Math.round(p.sector.breadth * 100),
+        stocks: p.stocks.map((st) => ({ name: st.name, todayPct: st.chg, mcapCr: st.mcap, trend: st.trend })),
+      })),
+      asOf: sect.fetchedAtIST,
+    };
+    const userContent = `Sector-rotation market scan (as of ${sect.fetchedAtIST}). Pick the best options to buy today.\n\n${JSON.stringify(scan, null, 2)}`;
+
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 2048,
+        system: IDEAS_SYSTEM,
+        messages: [{ role: "user", content: userContent }],
+        output_config: { format: { type: "json_schema", schema: IDEAS_SCHEMA }, effort: "medium" },
+      }),
+    });
+    const body = (await res.json().catch(() => null)) as
+      | { content?: Array<{ type: string; text?: string }>; stop_reason?: string; error?: { message?: string } }
+      | null;
+    if (!res.ok) throw new Error(`Claude ideas failed (HTTP ${res.status}): ${body?.error?.message ?? "unknown"}`);
+    if (body?.stop_reason === "refusal") throw new Error("Claude declined the ideas request (refusal).");
+
+    const text = body?.content?.find((b) => b.type === "text")?.text ?? "";
+    let parsed: { marketContext: string; candidates: IdeaCandidate[] };
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`Could not parse Claude ideas output: ${text.slice(0, 200)}`);
+    }
+
+    // Resolve every candidate to a concrete ATM contract via Groww (one CSV pass).
+    const resolved = await ctx.runAction(internal.groww.resolveAtmOptions, {
+      candidates: parsed.candidates.map((c) => ({ underlying: c.nseSymbol, type: c.optionType })),
+    });
+
+    // Keep the top 3 that resolved to a real, priced contract, in Claude's order.
+    const ideas: Record<string, unknown>[] = [];
+    for (let i = 0; i < parsed.candidates.length && ideas.length < 3; i++) {
+      const c = parsed.candidates[i];
+      const r = resolved[i];
+      const ltp = r?.ltp ?? 0;
+      if (!r || !r.resolved || !ltp) continue;
+      ideas.push({
+        rank: ideas.length + 1,
+        underlying: c.underlying,
+        nseSymbol: c.nseSymbol,
+        sector: c.sector,
+        optionType: c.optionType,
+        conviction: c.conviction,
+        rationale: c.rationale,
+        symbol: r.symbol ?? "",
+        strike: r.strike ?? 0,
+        expiry: r.expiry ?? "",
+        lotSize: r.lotSize ?? 0,
+        spot: r.spot ?? 0,
+        ltp,
+        entryLow: ltp,
+        entryHigh: r2(ltp * 1.04),
+        target: r2(ltp * (1 + c.targetPct / 100)),
+        stop: r2(ltp * (1 - c.stopPct / 100)),
+        targetPct: c.targetPct,
+        stopPct: c.stopPct,
+      });
+    }
+
+    await ctx.runMutation(internal.growwStore.putAgentIdeas, {
+      date,
+      generatedAt: Date.now(),
+      model: MODEL,
+      payload: JSON.stringify({ ideas, marketContext: parsed.marketContext, sectorDataAt: snap?.updatedAt ?? null, sectorAsOf: sect.fetchedAtIST }),
+    });
+
+    return { generated: ideas.length };
   },
 });

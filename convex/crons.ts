@@ -24,4 +24,11 @@ crons.cron("poll live position", "* 3-10 * * 1-5", api.groww.pollPosition, {});
 // PROPOSE-ONLY — it never places an order.
 crons.cron("agent review", "*/5 3-10 * * 1-5", api.agent.reviewPositions, {});
 
+// Fresh "best options to trade today" once per trading morning. 03:50 UTC =
+// 09:20 IST, just after the 09:15 open. Scans the latest sector snapshot, asks
+// Claude for the top 3 plays, and saves the day's ideas (history accumulates).
+// Costs ~1 Opus call per trading day — delete this line to keep ideas manual-only
+// (the "Generate ideas" button still works on demand).
+crons.cron("agent daily ideas", "50 3 * * 1-5", api.agent.generateIdeas, {});
+
 export default crons;

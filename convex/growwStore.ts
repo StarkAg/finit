@@ -108,6 +108,43 @@ export const latestSnapshot = internalQuery({
   },
 });
 
+// ---------------- Daily option ideas ----------------
+
+// Most recent day's ideas for the Agent tab.
+export const agentIdeas = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("agentIdeas").withIndex("by_date").collect();
+    if (!rows.length) return null;
+    const latest = rows.reduce((a, b) => (b.date > a.date ? b : a));
+    return { date: latest.date, generatedAt: latest.generatedAt, model: latest.model, payload: latest.payload };
+  },
+});
+
+// Full history (newest first) for the Agent tab's history list.
+export const agentIdeasHistory = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("agentIdeas").withIndex("by_date").collect();
+    return rows
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => ({ date: r.date, generatedAt: r.generatedAt, model: r.model, payload: r.payload }));
+  },
+});
+
+// Upsert the ideas for a given day (regenerating replaces that day's row).
+export const putAgentIdeas = internalMutation({
+  args: { date: v.string(), generatedAt: v.number(), model: v.string(), payload: v.string() },
+  handler: async (ctx, { date, generatedAt, model, payload }) => {
+    const existing = await ctx.db
+      .query("agentIdeas")
+      .withIndex("by_date", (q) => q.eq("date", date))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { generatedAt, model, payload });
+    else await ctx.db.insert("agentIdeas", { date, generatedAt, model, payload });
+  },
+});
+
 // Cached access token read/write (single row).
 export const getToken = internalQuery({
   args: {},

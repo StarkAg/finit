@@ -93,6 +93,18 @@ export default defineSchema({
     payload: v.string(), // JSON: { summary, verdicts: [...], model, marketOpen, basedOnSnapshotAt }
   }),
 
+  // Daily "best option to trade today" ideas. The agent (convex/agent.ts) scans
+  // the latest sector-rotation snapshot, asks Claude to rank the top option plays,
+  // then resolves each to a concrete ATM contract (strike/expiry/premium) via Groww.
+  // One row per trading day (regenerating replaces the day's row). PROPOSE-ONLY —
+  // the Agent tab renders these for the human; nothing is auto-traded.
+  agentIdeas: defineTable({
+    date: v.string(), // yyyy-mm-dd (IST trading day)
+    generatedAt: v.number(), // epoch ms
+    model: v.string(),
+    payload: v.string(), // JSON: { ideas: [...], marketContext, sectorDataAt }
+  }).index("by_date", ["date"]),
+
   // Cached Groww access token (expires daily at 6 AM IST). Lets the per-minute
   // poll reuse one token instead of re-minting every run. Single-row table.
   growwToken: defineTable({

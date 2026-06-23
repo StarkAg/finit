@@ -1,8 +1,9 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
+import { v } from "convex/values";
 import { createHash, createHmac } from "node:crypto";
 
 // Live Groww portfolio access. Generates a fresh daily access token from the
@@ -483,5 +484,80 @@ export const pollPosition = action({
     }
 
     return { positions: positions.length };
+  },
+});
+
+// ---------------- Option resolver (for the daily ideas agent) ----------------
+
+type ResolvedOption = {
+  underlying: string;
+  type: string;
+  resolved: boolean;
+  symbol?: string;
+  strike?: number;
+  expiry?: string;
+  lotSize?: number;
+  spot?: number;
+  ltp?: number;
+};
+
+// Given candidate underlyings + CE/PE, resolve each to its front-month ATM option:
+// the exact Groww trading symbol, strike, expiry, lot size, live spot, and premium.
+// Downloads the instruments CSV once and quotes each underlying's spot + ATM option.
+// Internal — called by convex/agent.ts when generating daily ideas.
+export const resolveAtmOptions = internalAction({
+  args: { candidates: v.array(v.object({ underlying: v.string(), type: v.string() })) },
+  handler: async (ctx, { candidates }): Promise<ResolvedOption[]> => {
+    if (!candidates.length) return [];
+    const token = await getCachedToken(ctx);
+
+    const res = await fetch("https://growwapi-assets.groww.in/instruments/instrument.csv");
+    if (!res.ok) return candidates.map((c) => ({ underlying: c.underlying, type: c.type, resolved: false }));
+    const csv = await res.text();
+
+    // cols: 2=trading_symbol 9=underlying_symbol 11=expiry_date 12=strike 13=lot_size
+    const wanted = new Set(candidates.map((c) => c.underlying.toUpperCase()));
+    const byUnderlying: Record<string, Array<{ expiry: string; strike: number; type: string; symbol: string; lotSize: number }>> = {};
+    for (const line of csv.split("\n")) {
+      const c = line.split(",");
+      const sym = c[2];
+      if (!sym) continue;
+      const t = sym.endsWith("CE") ? "CE" : sym.endsWith("PE") ? "PE" : null;
+      if (!t) continue; // options only
+      const u = (c[9] || "").toUpperCase();
+      if (!wanted.has(u)) continue;
+      const strike = Number(c[12]) || 0;
+      if (!strike) continue;
+      (byUnderlying[u] ||= []).push({ expiry: c[11] || "", strike, type: t, symbol: sym, lotSize: Number(c[13]) || 0 });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const out: ResolvedOption[] = [];
+    const spotCache: Record<string, number> = {};
+    for (const cand of candidates) {
+      const u = cand.underlying.toUpperCase();
+      const type = cand.type === "PE" ? "PE" : "CE";
+      const rows = (byUnderlying[u] || []).filter((r) => r.type === type);
+      if (!rows.length) { out.push({ underlying: u, type, resolved: false }); continue; }
+
+      // Front-month: nearest expiry on/after today (fallback to the latest available).
+      const allExp = [...new Set(rows.map((r) => r.expiry))].sort();
+      const expiry = allExp.find((e) => e >= today) ?? allExp[allExp.length - 1];
+
+      if (spotCache[u] === undefined) {
+        const sq = await quote(token, "CASH", u);
+        spotCache[u] = Number(sq.last_price ?? 0);
+      }
+      const spot = spotCache[u];
+      const inExpiry = rows.filter((r) => r.expiry === expiry);
+      if (!spot || !inExpiry.length) { out.push({ underlying: u, type, resolved: false }); continue; }
+
+      // ATM = strike nearest to spot.
+      const atm = inExpiry.reduce((best, r) => (Math.abs(r.strike - spot) < Math.abs(best.strike - spot) ? r : best));
+      const oq = await quote(token, "FNO", atm.symbol);
+      const ltp = Number(oq.last_price ?? 0);
+      out.push({ underlying: u, type, resolved: true, symbol: atm.symbol, strike: atm.strike, expiry, lotSize: atm.lotSize, spot: r2(spot), ltp: r2(ltp) });
+    }
+    return out;
   },
 });
