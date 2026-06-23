@@ -72,6 +72,14 @@ export default defineSchema({
     payload: v.string(), // JSON: { ranked, broad, picks, fetchedAtIST }
   }),
 
+  // "Aditya's Sector" snapshot — the Moneycontrol top-10 method: 1d top-10 and
+  // 5d top-10 sector returns, the intersection (confirmed uptrends), and a
+  // combined bullishness ranking. Single-row table, refreshed from the tab.
+  adityaSector: defineTable({
+    updatedAt: v.number(), // epoch ms when fetched
+    payload: v.string(), // JSON: { d1, d5, both, ranking, fetchedAtIST }
+  }),
+
   // Live F&O position panel. A Convex cron (convex/crons.ts) polls Groww every
   // minute during market hours and writes one snapshot row here; the Live tab
   // reads the latest. Payload is JSON-stringified (array of position cards with

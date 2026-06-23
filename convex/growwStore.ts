@@ -110,38 +110,51 @@ export const latestSnapshot = internalQuery({
 
 // ---------------- Daily option ideas ----------------
 
-// Most recent day's ideas for the Agent tab.
+// Most recent idea set for the Agent tab (latest generation, not just latest day).
 export const agentIdeas = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("agentIdeas").withIndex("by_date").collect();
+    const rows = await ctx.db.query("agentIdeas").collect();
     if (!rows.length) return null;
-    const latest = rows.reduce((a, b) => (b.date > a.date ? b : a));
+    const latest = rows.reduce((a, b) => (b.generatedAt > a.generatedAt ? b : a));
     return { date: latest.date, generatedAt: latest.generatedAt, model: latest.model, payload: latest.payload };
   },
 });
 
-// Full history (newest first) for the Agent tab's history list.
+// Full history (newest first). Every generation is kept (we append, never
+// overwrite), so prior idea sets stay around with their tracked outcomes.
 export const agentIdeasHistory = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("agentIdeas").withIndex("by_date").collect();
+    const rows = await ctx.db.query("agentIdeas").collect();
     return rows
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => b.generatedAt - a.generatedAt)
       .map((r) => ({ date: r.date, generatedAt: r.generatedAt, model: r.model, payload: r.payload }));
   },
 });
 
-// Upsert the ideas for a given day (regenerating replaces that day's row).
+// Internal: all idea rows (with _id) for the tracker to read + update.
+export const listIdeaRows = internalQuery({
+  args: {},
+  handler: async (ctx) =>
+    (await ctx.db.query("agentIdeas").collect()).map((r) => ({ id: r._id, date: r.date, generatedAt: r.generatedAt, payload: r.payload })),
+});
+
+// Internal: overwrite one idea row's payload (used by the tracker to write back
+// current premium / peak / status).
+export const setIdeasPayload = internalMutation({
+  args: { id: v.id("agentIdeas"), payload: v.string() },
+  handler: async (ctx, { id, payload }) => {
+    await ctx.db.patch(id, { payload });
+  },
+});
+
+// Append a new idea set. Every generation is kept (never overwritten) so the
+// prior picks stay in history with their tracked outcomes.
 export const putAgentIdeas = internalMutation({
   args: { date: v.string(), generatedAt: v.number(), model: v.string(), payload: v.string() },
   handler: async (ctx, { date, generatedAt, model, payload }) => {
-    const existing = await ctx.db
-      .query("agentIdeas")
-      .withIndex("by_date", (q) => q.eq("date", date))
-      .first();
-    if (existing) await ctx.db.patch(existing._id, { generatedAt, model, payload });
-    else await ctx.db.insert("agentIdeas", { date, generatedAt, model, payload });
+    await ctx.db.insert("agentIdeas", { date, generatedAt, model, payload });
   },
 });
 

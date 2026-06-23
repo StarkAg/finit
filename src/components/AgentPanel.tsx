@@ -37,6 +37,26 @@ type Idea = {
   entryHigh: number;
   target: number;
   stop: number;
+  // tracking (filled by the tracker cron)
+  nowLtp?: number;
+  nowPnlPct?: number;
+  peakLtp?: number;
+  troughLtp?: number;
+  status?: "open" | "target" | "stopped" | "expired";
+  trackedAt?: number;
+};
+
+const statusStyle: Record<NonNullable<Idea["status"]>, string> = {
+  target: "bg-good/15 text-good",
+  stopped: "bg-bad/15 text-bad",
+  expired: "bg-panel2 text-muted",
+  open: "bg-amber-500/15 text-amber-400",
+};
+const statusLabel: Record<NonNullable<Idea["status"]>, string> = {
+  target: "✓ Target hit",
+  stopped: "✗ Stopped",
+  expired: "Expired",
+  open: "Open",
 };
 type Ideas = { ideas: Idea[]; marketContext: string; sectorAsOf?: string; stale?: boolean };
 type IdeaDay = { date: string; generatedAt: number; model: string; payload: string };
@@ -172,8 +192,18 @@ export default function AgentPanel() {
                               <span className="truncate text-slate-300">
                                 #{it.rank} {it.underlying} {it.strike} {it.optionType}
                               </span>
-                              <span className="shrink-0 tabular-nums text-muted">
-                                @ {prem(it.ltp)} → <span className="text-good">{prem(it.target)}</span> / <span className="text-bad">{prem(it.stop)}</span>
+                              <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted">
+                                <span>@ {prem(it.ltp)}{it.nowLtp != null ? ` → ${prem(it.nowLtp)}` : ""}</span>
+                                {it.nowPnlPct != null && (
+                                  <span className={(it.nowPnlPct ?? 0) >= 0 ? "text-good" : "text-bad"}>
+                                    {(it.nowPnlPct ?? 0) >= 0 ? "+" : ""}{it.nowPnlPct}%
+                                  </span>
+                                )}
+                                {it.status && (
+                                  <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${statusStyle[it.status]}`}>
+                                    {statusLabel[it.status]}
+                                  </span>
+                                )}
                               </span>
                             </div>
                           ))}
@@ -259,10 +289,30 @@ function IdeaCard({ it }: { it: Idea }) {
           </div>
           <div className="mt-0.5 text-[11px] text-muted">{it.sector}</div>
         </div>
-        <span className={`shrink-0 text-xs font-bold ${convStyle[it.conviction]}`}>{it.conviction}</span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={`text-xs font-bold ${convStyle[it.conviction]}`}>{it.conviction}</span>
+          {it.status && (
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${statusStyle[it.status]}`}>
+              {statusLabel[it.status]}
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="mt-2 text-sm text-slate-300">{it.rationale}</p>
+
+      {it.nowLtp != null && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          <span className="text-muted">
+            Now <span className="font-semibold tabular-nums text-slate-200">{prem(it.nowLtp)}</span>
+          </span>
+          <span className={`font-semibold tabular-nums ${(it.nowPnlPct ?? 0) >= 0 ? "text-good" : "text-bad"}`}>
+            {(it.nowPnlPct ?? 0) >= 0 ? "+" : ""}{it.nowPnlPct}% vs entry
+          </span>
+          {it.peakLtp != null && <span className="text-muted">peak <span className="tabular-nums text-good">{prem(it.peakLtp)}</span></span>}
+          {it.troughLtp != null && <span className="text-muted">low <span className="tabular-nums text-bad">{prem(it.troughLtp)}</span></span>}
+        </div>
+      )}
 
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
         <KV k="Premium" v={prem(it.ltp)} />

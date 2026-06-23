@@ -2,6 +2,7 @@
 
 import { action } from "./_generated/server";
 import { internal, api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 // Agentic position review — the "brain" of Vance. Reads the latest live F&O
 // snapshot (built by groww.ts → pollPosition) and asks Claude Opus 4.8 to reason
@@ -387,5 +388,69 @@ export const generateIdeas = action({
     });
 
     return { generated: ideas.length };
+  },
+});
+
+// ---------------- Idea outcome tracking ----------------
+
+// Mark every open idea (across all saved sets) with its live premium, peak/trough
+// since entry, P&L %, and a locked status: target hit / stopped / expired / open.
+// Peak & trough accumulate across polls so a target/stop touch is caught even if
+// the premium later reverts. Runs on a cron during market hours + on demand.
+export const trackIdeas = action({
+  args: {},
+  handler: async (ctx): Promise<{ tracked: number }> => {
+    const rows = (await ctx.runQuery(internal.growwStore.listIdeaRows, {})) as Array<{ id: string; date: string; payload: string }>;
+    const today = istDay();
+
+    // Collect symbols of ideas that aren't already terminal.
+    const symbols = new Set<string>();
+    const parsedRows = rows.map((row) => {
+      let p: { ideas?: Array<Record<string, unknown>> } = {};
+      try { p = JSON.parse(row.payload); } catch { p = {}; }
+      for (const it of p.ideas ?? []) {
+        const st = it.status as string | undefined;
+        if (it.symbol && st !== "target" && st !== "stopped" && st !== "expired") symbols.add(String(it.symbol));
+      }
+      return { row, p };
+    });
+    if (!symbols.size) return { tracked: 0 };
+
+    const ltps = (await ctx.runAction(internal.groww.quoteFnoLtps, { symbols: [...symbols] })) as Record<string, number>;
+
+    let tracked = 0;
+    for (const { row, p } of parsedRows) {
+      let changed = false;
+      for (const it of p.ideas ?? []) {
+        const st = it.status as string | undefined;
+        if (st === "target" || st === "stopped" || st === "expired") continue;
+
+        const entry = Number(it.ltp ?? 0);
+        const target = Number(it.target ?? 0);
+        const stop = Number(it.stop ?? 0);
+        const expiry = String(it.expiry ?? "");
+        const now = ltps[String(it.symbol)];
+        const expired = expiry && expiry < today;
+
+        if (now != null && now > 0) {
+          it.nowLtp = now;
+          it.nowPnlPct = entry ? Math.round(((now - entry) / entry) * 100) : 0;
+          it.peakLtp = Math.max(Number(it.peakLtp ?? entry ?? now), now);
+          it.troughLtp = Math.min(Number(it.troughLtp ?? entry ?? now), now);
+        }
+
+        const peak = Number(it.peakLtp ?? entry);
+        const trough = Number(it.troughLtp ?? entry);
+        if (target && peak >= target) it.status = "target";
+        else if (stop && trough <= stop) it.status = "stopped";
+        else if (expired) it.status = "expired";
+        else it.status = "open";
+        it.trackedAt = Date.now();
+        changed = true;
+        tracked++;
+      }
+      if (changed) await ctx.runMutation(internal.growwStore.setIdeasPayload, { id: row.id as Id<"agentIdeas">, payload: JSON.stringify(p) });
+    }
+    return { tracked };
   },
 });

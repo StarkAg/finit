@@ -31,4 +31,8 @@ crons.cron("agent review", "*/5 3-10 * * 1-5", api.agent.reviewPositions, {});
 // Costs ~1 Opus call per trading day — delete this line to keep ideas manual-only.
 crons.cron("agent daily ideas", "15 4 * * 1-5", api.sectorScan.scanAndGenerate, {});
 
+// Track open ideas every 5 min during market hours: live premium, peak/trough,
+// and lock target/stop/expired status so history shows how each pick played out.
+crons.cron("track ideas", "*/5 3-10 * * 1-5", api.agent.trackIdeas, {});
+
 export default crons;

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as adityaSector from "../adityaSector.js";
 import type * as agent from "../agent.js";
 import type * as alexa from "../alexa.js";
 import type * as budget from "../budget.js";
@@ -31,6 +32,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adityaSector: typeof adityaSector;
   agent: typeof agent;
   alexa: typeof alexa;
   budget: typeof budget;

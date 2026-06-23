@@ -527,6 +527,22 @@ export const pollPosition = action({
   },
 });
 
+// Current LTP for a set of F&O symbols (primary/Harsh token). Used by the ideas
+// tracker to mark each idea's live premium. Internal.
+export const quoteFnoLtps = internalAction({
+  args: { symbols: v.array(v.string()) },
+  handler: async (ctx, { symbols }): Promise<Record<string, number>> => {
+    if (!symbols.length) return {};
+    const token = await getCachedToken(ctx);
+    const out: Record<string, number> = {};
+    for (const s of symbols) {
+      const q = await quote(token, "FNO", s);
+      out[s] = Number(q.last_price ?? 0);
+    }
+    return out;
+  },
+});
+
 // ---------------- Option resolver (for the daily ideas agent) ----------------
 
 type ResolvedOption = {
