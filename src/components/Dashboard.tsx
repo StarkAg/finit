@@ -93,8 +93,20 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label={real ? "Holdings P/L (unrealized)" : "Total Net P/L"} value={<Count value={netView} format={money} />} tone={netView >= 0 ? "good" : "bad"} sub={pct(netPctView)} />
-        <Stat label="Capital invested" value={<Count value={investedView} format={money} />} sub={`${positionsView} ${real ? "holdings" : "positions"}`} />
+        {/* While Groww holdings load, show a placeholder rather than the journal
+            fallback — otherwise the cards flash ~33 positions / ₹1.77L before
+            snapping to the real holdings. */}
+        <Stat
+          label={h.loading || real ? "Holdings P/L (unrealized)" : "Total Net P/L"}
+          value={h.loading ? <span className="text-muted">…</span> : <Count value={netView} format={money} />}
+          tone={netView >= 0 ? "good" : "bad"}
+          sub={h.loading ? "loading…" : pct(netPctView)}
+        />
+        <Stat
+          label="Capital invested"
+          value={h.loading ? <span className="text-muted">…</span> : <Count value={investedView} format={money} />}
+          sub={h.loading ? "—" : `${positionsView} ${real ? "holdings" : "positions"}`}
+        />
         <Stat label="Swing win rate" value={<Count value={s.winRate} format={pct} />} sub={`${s.wins}/${s.closed} closed`} />
         <Stat label="Monthly income" value={<Count value={alloc?.income ?? 0} format={money} />} sub={latest ? latest.date : "—"} />
       </div>
