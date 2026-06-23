@@ -75,7 +75,15 @@ export default function SectorRotation() {
                 </div>
                 {p.stocks.length ? (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[460px] text-sm">
+                    <table className="w-full min-w-[460px] table-fixed text-sm">
+                      {/* Shared fixed widths so every sector lines up column-for-column */}
+                      <colgroup>
+                        <col className="w-[30%]" />
+                        <col className="w-[15%]" />
+                        <col className="w-[17%]" />
+                        <col className="w-[20%]" />
+                        <col className="w-[18%]" />
+                      </colgroup>
                       <thead>
                         <tr className="text-left text-xs text-muted">
                           <th className="py-1 pr-2 font-medium">Stock</th>
@@ -88,7 +96,7 @@ export default function SectorRotation() {
                       <tbody>
                         {p.stocks.map((st) => (
                           <tr key={st.scId} className="border-t border-line/60">
-                            <td className="py-1.5 pr-2 font-medium text-slate-200">{st.name}</td>
+                            <td className="truncate py-1.5 pr-2 font-medium text-slate-200">{st.name}</td>
                             <td className={`py-1.5 px-2 text-right font-semibold ${pctClass(st.chg)}`}>{pct(st.chg)}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">₹{st.price?.toLocaleString("en-IN") ?? "—"}</td>
                             <td className="py-1.5 px-2 text-right tabular-nums text-muted">{cr(st.mcap)}</td>
