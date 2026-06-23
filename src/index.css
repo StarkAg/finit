@@ -53,6 +53,17 @@ body {
   min-width: 0;
 }
 
+/* Hide scrollbars app-wide (content still scrolls via wheel/trackpad/touch). */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge/IE */
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome, Safari, WebView */
+}
+
 .phone-nav {
   display: grid;
   /* column count is set inline from the tab count (see App.tsx) */
