@@ -53,7 +53,7 @@ export default function App() {
       </main>
 
       {/* Tab bar lives at the bottom on every screen size (the app's footer nav). */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-2xl backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/95 px-2 shadow-2xl backdrop-blur">
         <div
           className="phone-nav mx-auto w-full max-w-[1800px] 2xl:max-w-[2200px]"
           style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}
